@@ -1,200 +1,161 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from io import BytesIO
-import random
-from openpyxl import Workbook
-from openpyxl.styles import Border, Side, Alignment, Font
 import os
+import random
 
 # -------------------------------
-# Page Config
+# PAGE CONFIG
 # -------------------------------
 st.set_page_config(page_title="Workout Tracker Pro", layout="wide")
 
 # -------------------------------
-# LIGHT UI Styling
+# LOGIN SYSTEM
+# -------------------------------
+PASSWORD = "ilovemybubu"
+
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+
+if not st.session_state.auth:
+    st.title("🔐 Login Required")
+
+    pwd = st.text_input("Enter Password", type="password")
+
+    if st.button("Login"):
+        if pwd == PASSWORD:
+            st.session_state.auth = True
+            st.rerun()
+        else:
+            st.error("Wrong password ❌")
+
+    st.stop()
+
+# -------------------------------
+# CUSTOM CSS (QUOTE BIGGER)
 # -------------------------------
 st.markdown("""
 <style>
-body {
-    background-color: #f7f9fc;
-}
-.block-container {
-    padding-top: 1rem;
-}
-.card {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0px 2px 10px rgba(0,0,0,0.1);
-}
-.stButton>button {
-    background-color: #2e7dff;
-    color: white;
-    border-radius: 8px;
-    height: 3em;
-    width: 100%;
+.quote {
+    font-size: 24px;
     font-weight: bold;
+    text-align: center;
+    color: #2e7dff;
+    margin-bottom: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------
-# Motivational Quotes
+# MOTIVATIONAL QUOTES
 # -------------------------------
 quotes = [
-    "Fitness is not quitting. It’s getting up one more time 💪",
-    "Discipline creates results 🔥",
-    "Push beyond limits 🚀",
-    "Consistency beats everything 💯",
-    "Your only competition is you 👊"
+    "Push yourself because no one else will 💪",
+    "Consistency beats motivation 🔥",
+    "Small progress is still progress 👊",
+    "Discipline creates results 🚀",
+    "No pain, no gain 🏋️"
 ]
-
 quote = random.choice(quotes)
 
+# -------------------------------
+# HEADER
+# -------------------------------
+st.markdown("<h1 style='text-align:center;'>💪 Workout Tracker Pro</h1>", unsafe_allow_html=True)
+st.markdown(f"<div class='quote'>{quote}</div>", unsafe_allow_html=True)
 
 # -------------------------------
-# HEADER TEXT
+# FILE SETUP
 # -------------------------------
-st.markdown(f"""
-<h1 style='text-align:center;'>💪 Workout Tracker Pro</h1>
-<h4 style='text-align:center; color:gray;'>{quote}</h4>
-""", unsafe_allow_html=True)
+FILE = "workout_history.xlsx"
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# -------------------------------
-# Layout
-# -------------------------------
-col1, col2 = st.columns([2, 1])
+if not os.path.exists(FILE):
+    df_init = pd.DataFrame(columns=[
+        "Date", "Workout", "Set", "Weight", "Reps", "Volume"
+    ])
+    df_init.to_excel(FILE, index=False)
 
 # -------------------------------
-# INPUT CARD
+# MAIN LAYOUT
 # -------------------------------
+col1, col2 = st.columns([2, 2])
+
+# ===============================
+# 🏋️ LEFT → INPUT
+# ===============================
 with col1:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("🏋️ Workout Tracker")
 
-    st.subheader("🏋️ Workout Input")
-
-    workout = st.text_input("Workout Name", placeholder="Bench Press")
+    workout = st.text_input("Workout Name")
     date = st.date_input("Date")
 
-    sets = st.number_input("Number of Sets", min_value=1, max_value=10, value=3)
-
-    st.markdown("### Enter details for each set")
+    sets = st.number_input("Sets", min_value=1, max_value=6, value=3)
 
     set_data = []
-
     for i in range(sets):
         c1, c2 = st.columns(2)
-
         with c1:
-            weight = st.number_input(f"Set {i+1} - Weight (kg)", min_value=0, value=20, key=f"w_{i}")
+            w = st.number_input(f"Weight {i+1}", value=20, key=f"w{i}")
         with c2:
-            reps = st.number_input(f"Set {i+1} - Reps", min_value=1, value=10, key=f"r_{i}")
+            r = st.number_input(f"Reps {i+1}", value=10, key=f"r{i}")
+        set_data.append((w, r))
 
-        set_data.append((weight, reps))
+    save = st.button("💾 Save Workout")
 
-    generate = st.button("🚀 Generate Workout Analysis")
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# -------------------------------
-# SIDE PANEL
-# -------------------------------
+# ===============================
+# 📅 RIGHT → HISTORY + DOWNLOAD
+# ===============================
 with col2:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("📌 Tips")
-    st.write("""
-    • Progressive overload  
-    • Maintain proper form  
-    • Rest between sets  
-    """)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.subheader("📅 Workout History")
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    selected_date = st.date_input("Select Date")
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("🔥 Motivation")
-    st.success("Small daily progress = Big results 💪")
-    st.markdown('</div>', unsafe_allow_html=True)
+    df_all = pd.read_excel(FILE)
 
-# -------------------------------
-# Excel Function (with borders)
-# -------------------------------
-def create_excel(df):
-    wb = Workbook()
-    ws = wb.active
+    filtered = df_all[df_all["Date"] == selected_date.strftime("%Y-%m-%d")]
 
-    thin = Border(
-        left=Side(style='thin'), right=Side(style='thin'),
-        top=Side(style='thin'), bottom=Side(style='thin')
-    )
+    if not filtered.empty:
+        st.dataframe(filtered, use_container_width=True)
 
-    # Header
-    for col_num, col in enumerate(df.columns, 1):
-        cell = ws.cell(row=1, column=col_num, value=col)
-        cell.border = thin
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal='center')
-
-    # Data
-    for row_num, row in enumerate(df.values, 2):
-        for col_num, val in enumerate(row, 1):
-            cell = ws.cell(row=row_num, column=col_num, value=val)
-            cell.border = thin
-            cell.alignment = Alignment(horizontal='center')
-
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-# -------------------------------
-# OUTPUT
-# -------------------------------
-if generate:
-    if not workout:
-        st.warning("Please enter workout name")
+        total = filtered["Volume"].sum()
+        st.success(f"Total Volume: {total} kg")
     else:
-        total_volume = 0
-        data = []
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.info("No workout found")
 
-        for i, (w, r) in enumerate(set_data):
-            volume = w * r
-            total_volume += volume
+    # -------------------------------
+    # DOWNLOAD BELOW HISTORY
+    # -------------------------------
+    st.markdown("---")
+    st.subheader("📥 Download")
 
-            data.append({
-                "Workout": workout,
-                "Date": date.strftime("%Y-%m-%d"),
-                "DateTime": current_time,
-                "Set": i + 1,
-                "Weight (kg)": w,
-                "Reps": r,
-                "Volume": volume
-            })
-
-        df = pd.DataFrame(data)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-
-        st.subheader("📊 Workout Breakdown")
-        st.dataframe(df, use_container_width=True)
-
-        st.success(f"🔥 Total Volume: {total_volume} kg")
-
-        excel = create_excel(df)
-        file_name = f"workout_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-
+    with open(FILE, "rb") as f:
         st.download_button(
             "⬇️ Download Excel",
-            excel,
-            file_name=file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            f,
+            file_name="workout_history.xlsx"
         )
 
-        st.markdown('</div>', unsafe_allow_html=True)
+# -------------------------------
+# SAVE LOGIC
+# -------------------------------
+if save:
+    df_existing = pd.read_excel(FILE)
+
+    new_rows = []
+    for i, (w, r) in enumerate(set_data):
+        new_rows.append({
+            "Date": date.strftime("%Y-%m-%d"),
+            "Workout": workout,
+            "Set": i+1,
+            "Weight": w,
+            "Reps": r,
+            "Volume": w * r
+        })
+
+    df_new = pd.DataFrame(new_rows)
+
+    df_final = pd.concat([df_existing, df_new], ignore_index=True)
+    df_final.to_excel(FILE, index=False)
+
+    st.success("Workout saved successfully ✅")
+    st.rerun()
